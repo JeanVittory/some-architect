@@ -33,22 +33,10 @@ jobs:
       - name: Build Next.js
         run: pnpm build
 
-      - name: Dump OIDC token claims
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const token = await core.getIDToken('sts.amazonaws.com');
-
-            const payload = JSON.parse(
-              Buffer.from(token.split('.')[1], 'base64').toString()
-            );
-
-            console.log(payload);
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::771805192902:role/GitHubActionsDeployRole
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
 
