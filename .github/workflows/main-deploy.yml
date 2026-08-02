@@ -52,6 +52,18 @@ jobs:
           role-to-assume: arn:aws:iam::771805192902:role/GitHubActionsDeployRole
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Dump OIDC token claims
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('sts.amazonaws.com');
+
+            const payload = JSON.parse(
+              Buffer.from(token.split('.')[1], 'base64').toString()
+            );
+
+            console.log(payload);
+
       - name: Upload static site to S3
         run: |
           aws s3 sync out/ s3://${{ secrets.S3_BUCKET }} --delete
