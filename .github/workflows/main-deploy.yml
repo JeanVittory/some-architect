@@ -43,3 +43,55 @@ jobs:
       - name: Upload static site to S3
         run: |
           aws s3 sync out/ s3://${{ secrets.S3_BUCKET }} --delete
+
+      - name: Update running instances (SSM)
+        run: |
+          set -euo pipefail
+
+          CMD_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --comment "deploy ${GITHUB_SHA:0:7}" \
+            --targets "Key=tag:Application,Values=frontend" \
+            --max-concurrency "1" \
+            --max-errors "0" \
+            --parameters 'commands=["/usr/local/bin/deploy-site.sh"]' \
+            --query "Command.CommandId" --output text)
+
+          echo "CommandId: $CMD_ID"
+
+          # send-command es asincrono: hay que esperar el resultado
+          DONE=false
+          TOTAL=0
+          for i in $(seq 1 60); do
+            sleep 5
+            TOTAL=$(aws ssm list-command-invocations --command-id "$CMD_ID" \
+              --query "length(CommandInvocations)" --output text)
+            PENDING=$(aws ssm list-command-invocations --command-id "$CMD_ID" \
+              --query "length(CommandInvocations[?Status=='Pending' || Status=='InProgress' || Status=='Delayed'])" \
+              --output text)
+            echo "  [$i] invocaciones: $TOTAL | en curso: $PENDING"
+            if [ "$TOTAL" -gt 0 ] && [ "$PENDING" = "0" ]; then DONE=true; break; fi
+          done
+
+          echo "--- resultado por instancia ---"
+          aws ssm list-command-invocations --command-id "$CMD_ID" --details \
+            --query "CommandInvocations[].{Instancia:InstanceId,Estado:Status,Salida:CommandPlugins[0].Output}" \
+            --output table
+
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "::error::Ninguna instancia recibio el comando. Revisa el tag Application=frontend y el agente SSM."
+            exit 1
+          fi
+          if [ "$DONE" != true ]; then
+            echo "::error::Timeout esperando a las instancias"
+            exit 1
+          fi
+
+          FAILED=$(aws ssm list-command-invocations --command-id "$CMD_ID" \
+            --query "CommandInvocations[?Status!='Success'].InstanceId" --output text)
+          if [ -n "$FAILED" ]; then
+            echo "::error::El despliegue fallo en: $FAILED"
+            exit 1
+          fi
+
+          echo "Despliegue OK en $TOTAL instancia(s)"
