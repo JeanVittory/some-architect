@@ -38,6 +38,13 @@ jobs:
           echo "Repository: ${{ github.repository }}"
           echo "Ref: ${{ github.ref }}"
           echo "Event: ${{ github.event_name }}"
+      
+      - name: Debug AWS configuration
+        run: |
+          echo "Region: ${{ secrets.AWS_REGION }}"
+          echo "Role ARN starts with: ${ROLE_PREFIX}"
+        env:
+          ROLE_PREFIX: ${{ secrets.AWS_ROLE_ARN }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
